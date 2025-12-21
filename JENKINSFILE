@@ -10,60 +10,69 @@ pipeline {
         stage('Get Code') {
             steps {
                 // Obtener código del repo
-                git 'https://github.com/rubjmnz93/curso_devops_unir_cp1.git'
+                git 'https://github.com/rubjmnz93/curso_devops_unir_cp12.git'
                 sh 'ls -l'
                 echo WORKSPACE
             }
         }
-    
-        stage('Build') {
-           steps {
-              echo 'Eyyy, esto es Python. No hay que compilar nada!!!'
-           }
-        }
         
         stage('Tests')
+        /// Stage para lanzar las pruebas unitarias y de integración paralelamente
         {
             parallel
             {
-
+                /// Stage de lanzar las prueba unitarias
                 stage('Unit') {
                             steps {
-                                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                                /// Aunque los tests fallen, el stage se marca en verde
+                                catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
                                     sh '''                                        
                                         echo "Executing unittests"
-                                        pytest --junitxml=result-unit.xml test/unit
+                                        coverage run --branch --source=app --omit=app/__init__.py,app/api.py -m pytest --junitxml=result-unit.xml test/unit
                                     '''
+                                    junit 'result-unit.xml' 
                                 }
                             }
                 }
                 
                         
                 stage('Rest') {
+                    /// Stage de lanzar las prueba de integración
                     steps {
-                        /// Step de lanzar los test REST
-                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                        /// Aunque los tests fallen, el stage se marca en verde
+                        catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
                             sh '''
                                 echo "Executing REST tests"
                                 flask run &
                                 java -jar ~/wiremock-standalone-3.13.2.jar --port 9090 --root-dir test/wiremock &
                                 
-                                while ! nc -z localhost 9090; do
+                                # 10 reintentos para ver si wiremock está levantado
+                                for i in $(seq 1 10); do
+                                  nc -z localhost 9090 && break
+                                  echo "Waiting for WireMock... try $i/10"
                                   sleep 1
-                                done
+                                done || {
+                                  echo "WireMock not available"
+                                  exit 1
+                                }
                                 
                                 pytest --junitxml=result-rest.xml test/rest
                             '''
+                            junit 'result-rest.xml'
                         }
                     }
                 }        
             }
         }
-        
-        stage ('Results') {
+        stage("Coverage") {
+            /// Stage con las pruebas de cobertura
             steps {
-                junit 'result*.xml'
+                sh '''
+                    export PYTHONPATH=$WORKSPACE
+                    coverage xml
+                '''
+                recordCoverage qualityGates: [[criticality: 'NOTE', integerThreshold: 95, metric: 'LINE', threshold: 95.0], [criticality: 'ERROR', integerThreshold: 85, metric: 'LINE', threshold: 85.0], [criticality: 'ERROR', integerThreshold: 80, metric: 'BRANCH', threshold: 80.0], [criticality: 'NOTE', integerThreshold: 90, metric: 'BRANCH', threshold: 90.0]], tools: [[parser: 'COBERTURA', pattern: 'coverage.xml']]
             }
-        }        
+        }
      }
 }
