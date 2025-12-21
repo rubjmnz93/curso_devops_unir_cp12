@@ -1,0 +1,90 @@
+pipeline {
+    agent any
+    
+    options { skipDefaultCheckout() }
+    
+    environment {
+        PYTHONPATH = "${WORKSPACE}"
+        FLASK_APP  = "app/api.py"
+    }
+
+     stages {
+        stage('Get Code') {
+            steps {
+                // Obtener código del repo
+                git 'https://github.com/rubjmnz93/curso_devops_unir_cp1.git'
+                sh 'ls -l'
+                echo WORKSPACE
+                echo NODE_NAME
+                stash name:'code', includes:'**'
+            }
+        }
+    
+        stage('Build') {
+           steps {
+              echo 'Eyyy, esto es Python. No hay que compilar nada!!!'
+           }
+        }
+        
+        stage('Tests')
+        {
+            parallel
+            {
+
+                stage('Unit') {
+                            agent {label 'agent1'}
+                            steps {
+                                echo NODE_NAME
+                                unstash name:'code'
+                                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                                    sh '''    
+                                        export PYTHONPATH=$WORKSPACE
+                                        echo "Executing unittests"
+                                        pytest --junitxml=result-unit.xml test/unit
+                                    '''
+                                    stash name:'unit-res', includes:'result-unit.xml'
+                                }
+                            }
+                }
+                
+                        
+                stage('Rest') {
+                    agent {label 'agent2'}
+                    steps {
+                        /// Step de lanzar los test REST
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            echo NODE_NAME
+                            unstash name:'code'
+                            sh '''
+                                export PYTHONPATH=$WORKSPACE
+                                echo "Executing REST tests"
+                                flask run &
+                                java -jar ~/wiremock-standalone-3.13.2.jar --port 9090 --root-dir test/wiremock &
+                                
+                                for i in $(seq 1 10); do
+                                  nc -z localhost 9090 && break
+                                  echo "Waiting for WireMock... try $i/10"
+                                  sleep 1
+                                done || {
+                                  echo "❌ WireMock not available"
+                                  exit 1
+                                }
+
+                                pytest --junitxml=result-rest.xml test/rest
+                            '''
+                            stash name:'rest-res', includes:'result-rest.xml'
+                        }
+                    }
+                }        
+            }
+        }
+        
+        stage ('Results') {
+            steps {
+                unstash name:'unit-res'
+                unstash name:'rest-res'
+                junit 'result*.xml'
+            }
+        }        
+     }
+}

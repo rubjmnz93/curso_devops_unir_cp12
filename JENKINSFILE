@@ -1,0 +1,69 @@
+pipeline {
+    agent any
+    
+    environment {
+        PYTHONPATH = "${WORKSPACE}"
+        FLASK_APP  = "app/api.py"
+    }
+
+     stages {
+        stage('Get Code') {
+            steps {
+                // Obtener código del repo
+                git 'https://github.com/rubjmnz93/curso_devops_unir_cp1.git'
+                sh 'ls -l'
+                echo WORKSPACE
+            }
+        }
+    
+        stage('Build') {
+           steps {
+              echo 'Eyyy, esto es Python. No hay que compilar nada!!!'
+           }
+        }
+        
+        stage('Tests')
+        {
+            parallel
+            {
+
+                stage('Unit') {
+                            steps {
+                                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                                    sh '''                                        
+                                        echo "Executing unittests"
+                                        pytest --junitxml=result-unit.xml test/unit
+                                    '''
+                                }
+                            }
+                }
+                
+                        
+                stage('Rest') {
+                    steps {
+                        /// Step de lanzar los test REST
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            sh '''
+                                echo "Executing REST tests"
+                                flask run &
+                                java -jar ~/wiremock-standalone-3.13.2.jar --port 9090 --root-dir test/wiremock &
+                                
+                                while ! nc -z localhost 9090; do
+                                  sleep 1
+                                done
+                                
+                                pytest --junitxml=result-rest.xml test/rest
+                            '''
+                        }
+                    }
+                }        
+            }
+        }
+        
+        stage ('Results') {
+            steps {
+                junit 'result*.xml'
+            }
+        }        
+     }
+}
