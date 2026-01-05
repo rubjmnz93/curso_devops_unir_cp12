@@ -114,30 +114,6 @@ pipeline {
                         recordIssues tools: [pyLint(name: 'Bandit', pattern: 'bandit.out')], qualityGates: [[integerThreshold: 2, threshold: 2.0, type: 'TOTAL'], [criticality: 'FAILURE', integerThreshold: 4, threshold: 4.0, type: 'TOTAL']]
                     }
                 }
-                /// Etapa para las pruebas de cobertura
-                /// Si la cobertura por línea está entre 80% y 95%, la etapa y el build se marcan como unstable (naranja)
-                /// Si la cobertura por línea está es 95% o mayor, la etapa y el build se marcan como unhealty (rojo)
-                /// Si la cobertura por ramas está entre 80% y 90%, la etapa y el build se marcan como unstable (naranja)
-                /// Si la cobertura por ramas está es 90% o mayor, la etapa y el build se marcan como unhealty (rojo)
-                /// Sea cual sea el resultado, el pipeline continua la ejecución del resto de etapas.
-                /// Para evitar repetir las pruebas unitarias, la cobertura se ejuta en la etapa de tests unitarios y en esta
-                /// se muestran los resultados y se aplican los quality gates.
-                /// Pasos:
-                /// 1. Como ya se ejecutó la cobertura, solo se genera un coverage.xml con los resultados.
-                /// 2. Con recordCoverage del plugin Cobertura se aplican los qualityGates.
-                stage("Coverage") {
-                    agent {label 'agent_1'}
-                    steps {
-                        sh 'whoami'
-                        sh 'hostname'
-                        echo WORKSPACE
-                        unstash 'coverage-data'
-                        sh '''
-                            coverage xml
-                        '''
-                        recordCoverage qualityGates: [[criticality: 'NOTE', integerThreshold: 95, metric: 'LINE', threshold: 95.0], [criticality: 'ERROR', integerThreshold: 85, metric: 'LINE', threshold: 85.0], [criticality: 'ERROR', integerThreshold: 80, metric: 'BRANCH', threshold: 80.0], [criticality: 'NOTE', integerThreshold: 90, metric: 'BRANCH', threshold: 90.0]], tools: [[parser: 'COBERTURA', pattern: 'coverage.xml']]
-                    }
-                }
                 /// Etapa para las pruebas de rendimiento con JMeter
                 /// Se incluye un test plan en el 5 hilos realizan 40 llamadas al microservicio de suma y 40 al microservicio de resta.
                 /// Pasos:
@@ -170,6 +146,30 @@ pipeline {
                         '''
                         perfReport sourceDataFiles: 'flask.jtl'
                     }
+                }
+            }
+            /// Etapa para las pruebas de cobertura
+            /// Si la cobertura por línea está entre 80% y 95%, la etapa y el build se marcan como unstable (naranja)
+            /// Si la cobertura por línea está es 95% o mayor, la etapa y el build se marcan como unhealty (rojo)
+            /// Si la cobertura por ramas está entre 80% y 90%, la etapa y el build se marcan como unstable (naranja)
+            /// Si la cobertura por ramas está es 90% o mayor, la etapa y el build se marcan como unhealty (rojo)
+            /// Sea cual sea el resultado, el pipeline continua la ejecución del resto de etapas.
+            /// Para evitar repetir las pruebas unitarias, la cobertura se ejuta en la etapa de tests unitarios y en esta
+            /// se muestran los resultados y se aplican los quality gates.
+            /// Pasos:
+            /// 1. Como ya se ejecutó la cobertura, solo se genera un coverage.xml con los resultados.
+            /// 2. Con recordCoverage del plugin Cobertura se aplican los qualityGates.
+            stage("Coverage") {
+                agent {label 'agent_1'}
+                steps {
+                    sh 'whoami'
+                    sh 'hostname'
+                    echo WORKSPACE
+                    unstash 'coverage-data'
+                    sh '''
+                        coverage xml
+                    '''
+                    recordCoverage qualityGates: [[criticality: 'NOTE', integerThreshold: 95, metric: 'LINE', threshold: 95.0], [criticality: 'ERROR', integerThreshold: 85, metric: 'LINE', threshold: 85.0], [criticality: 'ERROR', integerThreshold: 80, metric: 'BRANCH', threshold: 80.0], [criticality: 'NOTE', integerThreshold: 90, metric: 'BRANCH', threshold: 90.0]], tools: [[parser: 'COBERTURA', pattern: 'coverage.xml']]
                 }
             }
         }
