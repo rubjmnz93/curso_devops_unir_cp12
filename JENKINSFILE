@@ -1,43 +1,46 @@
 pipeline {
     agent any
-    
-    environment {
-        PYTHONPATH = "${WORKSPACE}"
-        FLASK_APP  = "app/api.py"
-    }
 
      stages {
-        stage('Get Code') {
-            steps {
-                // Obtener código del repo
-                git 'https://github.com/rubjmnz93/curso_devops_unir_cp12.git'
-                sh 'ls -l'
-                echo WORKSPACE
-            }
-        }
+        /// Etapa para las pruebas de código estático con flake8
+        /// Si se encuentran entre 8 y 9 hallazgos, la etapa y el build se marcan como unstable (naranja)
+        /// Si se encuentran 10 o más hallazgos, la etapa y el build se marcan como unhealty (rojo)
+        /// Sea cual sea el resultado, el pipeline continua la ejecución del resto de etapas.
+        /// Pasos:
+        /// 1. Se lanza flake8 y se guardan los resultado en el fichero flake8.out. Se añade exit-zero para que flake8 termine correctamente aunque falle.
+        /// 2. Con recordIssues del plugin Warnings-NG se aplican los qualityGates.
         
-         /// Stage para lanzar las pruebas de código estático
         stage('Static') {
             steps {
                 sh '''
+                    export PYTHONPATH=$WORKSPACE
                     flake8 --exit-zero --format=pylint app > flake8.out
                 '''
                 recordIssues qualityGates: [[integerThreshold: 8, threshold: 8.0, type: 'TOTAL'], [criticality: 'FAILURE', integerThreshold: 10, threshold: 10.0, type: 'TOTAL']], sourceCodeRetention: 'LAST_BUILD', tools: [flake8(pattern: 'flake8.out')]
             }
         }
         
+        /// Etapa para lanzar las pruebas unitarias y de integración paralelamente
         stage('Tests')
-        /// Stage para lanzar las pruebas unitarias y de integración paralelamente
         {
             parallel
             {
-                /// Stage de lanzar las prueba unitarias
+                /// Etapa de lanzar las prueba unitarias con pytest
+                /// No se utiliza ningún baremo para estableces si las pruebas han sido satisfactorias o no
+                /// La etapa siempre se marca en verde aunque el falle
+                /// Para evitar volver a lanzar las prueba unitarias, se lanza también coverage
+                /// Pasos:
+                /// 1. Se engloba en un catchError con buildResult: 'SUCCESS', stageResult: 'SUCCESS' para que
+                ///    tanto el stage como la build se marquen en verde aunque falle.
+                /// 2. Se ejecuta coverage run para ejecutar la cobertura a la vez que los tests.
+                /// 3. Dentro del coverage run se ejecuta pytest --junitxml=result-unit.xml test/unit
+                ///    con los test que queremos ejecutar. Los resultados se guardan en result-unit.xml
+                /// 4. Se llama al plugin JUnit para mostrar los resultados de los tests
                 stage('Unit') {
                     steps {
-                        /// Aunque los tests fallen, el stage se marca en verde
                         catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
                             sh '''                                        
-                                echo "Executing unittests"
+                                export PYTHONPATH=$WORKSPACE
                                 coverage run --branch --source=app --omit=app/__init__.py,app/api.py -m pytest --junitxml=result-unit.xml test/unit
                             '''
                             junit 'result-unit.xml' 
@@ -45,14 +48,23 @@ pipeline {
                     }
                 }
                 
-                        
+                /// Etapa de lanzar las prueba de integración con pytest
+                /// No se utiliza ningún baremo para estableces si las pruebas han sido satisfactorias o no
+                /// La etapa siempre se marca en verde aunque el falle
+                /// Pasos:
+                /// 1. Se engloba en un catchError con buildResult: 'SUCCESS', stageResult: 'SUCCESS' para que
+                ///    tanto el stage como la build se marquen en verde aunque falle.
+                /// 2. Se lanza flask
+                /// 3. Se lanza wiremock en el puerto 9090
+                /// 4. Con un bucle for se hacen 10 intentos de comprobación de que wiremock está levantado con 1s de espera
+                /// 5. Se lanzan los test de integración con pytest y se guardan los resultados en result-rest.xml
+                /// 6. Se llama al plugin JUnit para mostrar los resultados de los tests
                 stage('Rest') {
-                    /// Stage de lanzar las prueba de integración
                     steps {
-                        /// Aunque los tests fallen, el stage se marca en verde
                         catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
                             sh '''
-                                echo "Executing REST tests"
+                                export PYTHONPATH=$WORKSPACE
+                                export FLASK_APP=app/api.py
                                 flask run &
                                 java -jar ~/wiremock-standalone-3.13.2.jar --port 9090 --root-dir test/wiremock &
                                 
@@ -74,31 +86,57 @@ pipeline {
                 }        
             }
         }
+        
+        
+        /// Etapa para las pruebas de cobertura
+        /// Si la cobertura por línea está entre 80% y 95%, la etapa y el build se marcan como unstable (naranja)
+        /// Si la cobertura por línea está es 95% o mayor, la etapa y el build se marcan como unhealty (rojo)
+        /// Si la cobertura por ramas está entre 80% y 90%, la etapa y el build se marcan como unstable (naranja)
+        /// Si la cobertura por ramas está es 90% o mayor, la etapa y el build se marcan como unhealty (rojo)
+        /// Sea cual sea el resultado, el pipeline continua la ejecución del resto de etapas.
+        /// Para evitar repetir las pruebas unitarias, la cobertura se ejuta en la etapa de tests unitarios y en esta
+        /// se muestran los resultados y se aplican los quality gates.
+        /// Pasos:
+        /// 1. Como ya se ejecutó la cobertura, solo se genera un coverage.xml con los resultados.
+        /// 2. Con recordCoverage del plugin Cobertura se aplican los qualityGates.
         stage("Coverage") {
-            /// Stage con las pruebas de cobertura
             steps {
                 sh '''
-                    export PYTHONPATH=$WORKSPACE
                     coverage xml
                 '''
                 recordCoverage qualityGates: [[criticality: 'NOTE', integerThreshold: 95, metric: 'LINE', threshold: 95.0], [criticality: 'ERROR', integerThreshold: 85, metric: 'LINE', threshold: 85.0], [criticality: 'ERROR', integerThreshold: 80, metric: 'BRANCH', threshold: 80.0], [criticality: 'NOTE', integerThreshold: 90, metric: 'BRANCH', threshold: 90.0]], tools: [[parser: 'COBERTURA', pattern: 'coverage.xml']]
             }
         }
+
+        /// Etapa para lanzar las pruebas de seguridad con bandit
+        /// Si se encuentran entre 2 y 3 hallazgos, la etapa y el build se marcan como unstable (naranja)
+        /// Si se encuentran 4 o más hallazgos, la etapa y el build se marcan como unhealty (rojo)
+        /// Sea cual sea el resultado, el pipeline continua la ejecución del resto de etapas.
         stage("Security") {
             steps {
                 sh '''
+                   export PYTHONPATH=$WORKSPACE
                    bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}" 
                 '''
                 recordIssues tools: [pyLint(name: 'Bandit', pattern: 'bandit.out')], qualityGates: [[integerThreshold: 2, threshold: 2.0, type: 'TOTAL'], [criticality: 'FAILURE', integerThreshold: 4, threshold: 4.0, type: 'TOTAL']]
             }
         }
+
+        /// Etapa para las pruebas de rendimiento con JMeter
+        /// Se incluye un test plan en el 5 hilos realizan 40 llamadas al microservicio de suma y 40 al microservicio de resta.
+        /// Pasos:
+        /// 1. Se levanta el servicio de flask
+        /// 3. Con un bucle for se espera que flask esté disponible un máximo de 10 reintentos.
+        /// 4. Se lanza JMeter con el plan test/jmeter/flask.jmx y se guardan los resultados en flask.jtl.
+        /// 5. Con perfReport del plugin perfomance se lee flask.jtl para visualizar los resultados.
         stage("Performance"){
             steps {
                 sh '''
+                    export PYTHONPATH=$WORKSPACE
                     export FLASK_APP=app/api.py
                     flast run &
                     
-                    # 10 reintentos para ver si Flask está levantado
+                    # 10 reintentos para comprobar que Flask está levantado
                     for i in $(seq 1 10); do
                       nc -z localhost 5000 && break
                       echo "Waiting for Flask... try $i/10"
