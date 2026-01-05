@@ -20,7 +20,6 @@ pipeline {
                         sh 'whoami'
                         sh 'hostname'
                         echo WORKSPACE
-                        unstash name:'code'
                         sh '''
                             export PYTHONPATH=$WORKSPACE
                             flake8 --exit-zero --format=pylint app > flake8.out
@@ -46,7 +45,6 @@ pipeline {
                         sh 'whoami'
                         sh 'hostname'
                         echo WORKSPACE
-                        unstash name:'code'
                         catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
                             sh '''                                        
                                 export PYTHONPATH=$WORKSPACE
@@ -75,7 +73,6 @@ pipeline {
                         sh 'whoami'
                         sh 'hostname'
                         echo WORKSPACE
-                        unstash name:'code'
                         catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
                             sh '''
                                 export PYTHONPATH=$WORKSPACE
@@ -110,7 +107,6 @@ pipeline {
                         sh 'whoami'
                         sh 'hostname'
                         echo WORKSPACE
-                        unstash name:'code'
                         sh '''
                         export PYTHONPATH=$WORKSPACE
                         bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}" 
@@ -135,7 +131,6 @@ pipeline {
                         sh 'whoami'
                         sh 'hostname'
                         echo WORKSPACE
-                        unstash name:'coverage'
                         sh '''
                             coverage xml
                         '''
@@ -155,12 +150,11 @@ pipeline {
                         sh 'whoami'
                         sh 'hostname'
                         echo WORKSPACE
-                        unstash name:'code'
                         sh '''
                             export PYTHONPATH=$WORKSPACE
                             export FLASK_APP=app/api.py
                             flast run &
-                            
+
                             # 10 reintentos para comprobar que Flask está levantado
                             for i in $(seq 1 10); do
                             nc -z localhost 5000 && break
