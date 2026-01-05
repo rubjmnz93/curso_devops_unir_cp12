@@ -15,7 +15,7 @@ pipeline {
                 /// 2. Con recordIssues del plugin Warnings-NG se aplican los qualityGates.
                 
                 stage('Static') {
-                    agent {label 'agent_1'}
+                    agent {label 'agent'}
                     steps {
                         sh 'whoami'
                         sh 'hostname'
@@ -40,7 +40,7 @@ pipeline {
                 ///    con los test que queremos ejecutar. Los resultados se guardan en result-unit.xml
                 /// 4. Se llama al plugin JUnit para mostrar los resultados de los tests
                 stage('Unit') {
-                    agent {label 'agent_1'}
+                    agent {label 'agent'}
                     steps {
                         sh 'whoami'
                         sh 'hostname'
@@ -68,7 +68,7 @@ pipeline {
                 /// 5. Se lanzan los test de integración con pytest y se guardan los resultados en result-rest.xml
                 /// 6. Se llama al plugin JUnit para mostrar los resultados de los tests
                 stage('Rest') {
-                    agent {label 'agent_2'}
+                    agent {label 'agent'}
                     steps {
                         sh 'whoami'
                         sh 'hostname'
@@ -102,7 +102,7 @@ pipeline {
                 /// Si se encuentran 4 o más hallazgos, la etapa y el build se marcan como unhealty (rojo)
                 /// Sea cual sea el resultado, el pipeline continua la ejecución del resto de etapas.
                 stage("Security") {
-                    agent {label 'agent_1'}
+                    agent {label 'agent'}
                     steps {
                         sh 'whoami'
                         sh 'hostname'
@@ -122,7 +122,7 @@ pipeline {
                 /// 4. Se lanza JMeter con el plan test/jmeter/flask.jmx y se guardan los resultados en flask.jtl.
                 /// 5. Con perfReport del plugin perfomance se lee flask.jtl para visualizar los resultados.
                 stage("Performance"){
-                    agent {label 'agent_2'}
+                    agent {label 'agent'}
                     steps {
                         sh 'whoami'
                         sh 'hostname'
@@ -161,7 +161,7 @@ pipeline {
         /// 1. Como ya se ejecutó la cobertura, solo se genera un coverage.xml con los resultados.
         /// 2. Con recordCoverage del plugin Cobertura se aplican los qualityGates.
         stage("Coverage") {
-            agent {label 'agent_1'}
+            agent {label 'agent'}
             steps {
                 sh 'whoami'
                 sh 'hostname'
