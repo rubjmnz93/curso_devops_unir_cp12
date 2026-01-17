@@ -80,7 +80,9 @@ pipeline {
                                 export PYTHONPATH=$WORKSPACE
                                 export FLASK_APP=app/api.py
                                 flask run &
+                                FLASK_PID=$!
                                 java -jar ~/wiremock-standalone-3.13.2.jar --port 9090 --root-dir test/wiremock &
+                                WIREMOCK_PID=$!
                                 
                                 # 10 reintentos para ver si wiremock está levantado
                                 for i in $(seq 1 10); do
@@ -93,6 +95,8 @@ pipeline {
                                 }
                                 
                                 pytest --junitxml=result-rest.xml test/rest
+                                kill $FLASK_PID # stop flask
+                                kill $WIREMOCK_PID # stop wiremock
                             '''
                             junit 'result-rest.xml'
                         }
@@ -135,6 +139,7 @@ pipeline {
                     export PYTHONPATH=$WORKSPACE
                     export FLASK_APP=app/api.py
                     flask run &
+                    FLASK_PID=$!
                     
                     # 10 reintentos para comprobar que Flask está levantado
                     for i in $(seq 1 10); do
@@ -147,6 +152,7 @@ pipeline {
                     }
                     
                     ~/apache-jmeter-5.6.3/bin/jmeter.sh -n -t test/jmeter/flask.jmx -f -l flask.jtl
+                    kill $FLASK_PID # stop flask
                 '''
                 perfReport sourceDataFiles: 'flask.jtl'
             }
