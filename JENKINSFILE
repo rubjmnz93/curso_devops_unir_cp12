@@ -134,7 +134,7 @@ pipeline {
                 sh '''
                     export PYTHONPATH=$WORKSPACE
                     export FLASK_APP=app/api.py
-                    flast run &
+                    flask run &
                     
                     # 10 reintentos para comprobar que Flask está levantado
                     for i in $(seq 1 10); do

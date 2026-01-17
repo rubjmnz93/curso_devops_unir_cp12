@@ -1,8 +1,21 @@
 pipeline {
-    agent none
+    agent any
+
+    options { skipDefaultCheckout() }
 
     stages {
-        /// Etapa para lanzar las pruebas unitarias y de integración paralelamente
+        stage('Get Code') {
+            /// Etapa para obtener el código del repositorio de GitHub.
+            /// Se hace stash del código para poder compartirlo entre workspaces.
+            steps {
+                git 'https://github.com/rubjmnz93/curso_devops_unir_cp12.git'
+                sh 'ls -l'
+                echo WORKSPACE
+                echo NODE_NAME
+                stash name:'code', includes:'**'
+            }
+        }
+        /// Etapa para lanzar las pruebas paralelamente
         stage('Tests') {
             parallel {
 
@@ -20,6 +33,8 @@ pipeline {
                         sh 'whoami'
                         sh 'hostname'
                         echo WORKSPACE
+                        echo NODE_NAME
+                        unstash name:'code'
                         sh '''
                             export PYTHONPATH=$WORKSPACE
                             flake8 --exit-zero --format=pylint app > flake8.out
@@ -45,6 +60,8 @@ pipeline {
                         sh 'whoami'
                         sh 'hostname'
                         echo WORKSPACE
+                        echo NODE_NAME
+                        unstash name:'code'
                         catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
                             sh '''                                        
                                 export PYTHONPATH=$WORKSPACE
@@ -73,6 +90,8 @@ pipeline {
                         sh 'whoami'
                         sh 'hostname'
                         echo WORKSPACE
+                        echo NODE_NAME
+                        unstash name:'code'
                         catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
                             sh '''
                                 export PYTHONPATH=$WORKSPACE
@@ -107,6 +126,8 @@ pipeline {
                         sh 'whoami'
                         sh 'hostname'
                         echo WORKSPACE
+                        echo NODE_NAME
+                        unstash name:'code'
                         sh '''
                         export PYTHONPATH=$WORKSPACE
                         bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}" 
@@ -127,10 +148,12 @@ pipeline {
                         sh 'whoami'
                         sh 'hostname'
                         echo WORKSPACE
+                        echo NODE_NAME
+                        unstash name:'code'
                         sh '''
                             export PYTHONPATH=$WORKSPACE
                             export FLASK_APP=app/api.py
-                            flast run &
+                            flask run &
 
                             # 10 reintentos para comprobar que Flask está levantado
                             for i in $(seq 1 10); do
@@ -160,12 +183,14 @@ pipeline {
         /// Pasos:
         /// 1. Como ya se ejecutó la cobertura, solo se genera un coverage.xml con los resultados.
         /// 2. Con recordCoverage del plugin Cobertura se aplican los qualityGates.
+        /// No se necesita el código completo, solo el resultado de la cobetura.
         stage("Coverage") {
             agent {label 'agent'}
             steps {
                 sh 'whoami'
                 sh 'hostname'
                 echo WORKSPACE
+                echo NODE_NAME
                 unstash 'coverage-data'
                 sh '''
                     coverage xml
